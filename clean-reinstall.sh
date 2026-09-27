@@ -11,6 +11,8 @@ log() { printf '[UCSI-CLEAN] %s\n' "$*"; }
 
 [[ "$EUID" -eq 0 ]] || die "Run as root."
 
+cd /
+
 command -v docker >/dev/null 2>&1 || die "Docker is not installed."
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 command -v git >/dev/null 2>&1 || apt-get update -y >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y git ca-certificates openssl curl >/dev/null
