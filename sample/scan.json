@@ -1,0 +1,9 @@
+{
+  "server": "example.com",
+  "country": "Germany",
+  "city": "Frankfurt",
+  "mode": "TLS",
+  "profile": "BALANCED",
+  "top_n": 20,
+  "sample_count": 3
+}

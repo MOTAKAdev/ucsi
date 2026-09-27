@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info:
+  title: UCSI API
+  version: 0.1.0
+  description: Measurement-driven endpoint intelligence API.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/system/health:
+    get:
+      security: []
+      responses: {"200": {description: Healthy}}
+  /api/v1/scans:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ScanInput'}
+      responses:
+        '200':
+          description: Created
+          content: {application/json: {schema: {type: object}}}
+  /api/v1/scans/{id}:
+    get:
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Scan}}
+  /api/v1/scans/{id}/results:
+    get:
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Results}}
+  /api/v1/results/top:
+    get:
+      parameters: [{name: scan_id, in: query, required: true, schema: {type: string}}]
+      responses: {'200': {description: Results}}
+  /api/v1/scans/{id}/cancel:
+    post:
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Cancelled}}
+  /api/v1/system/metrics:
+    get:
+      security: []
+      responses: {'200': {description: Prometheus-compatible metrics}}
+  /api/v1/probes:
+    get:
+      responses: {'200': {description: Probe list}}
+  /api/v1/probes/{id}:
+    get:
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Probe}}
+  /api/v1/sources/health:
+    get:
+      responses: {'200': {description: Source health}}
+  /api/v1/candidates/validate:
+    post:
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [hostname], properties: {hostname: {type: string}, samples: {type: integer}}}}}
+      responses: {'200': {description: Scan queued}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  schemas:
+    ScanInput:
+      type: object
+      required: [server, mode]
+      properties:
+        server: {type: string}
+        country: {type: string}
+        city: {type: string}
+        provider: {type: string}
+        asn: {type: string}
+        datacenter: {type: string}
+        mode: {type: string, enum: [TLS, REALITY]}
+        profile: {type: string, enum: [FAST, BALANCED, DEEP, CUSTOM]}
+        top_n: {type: integer, minimum: 1, maximum: 100}
+        sample_count: {type: integer, minimum: 1, maximum: 20}

@@ -1,0 +1,49 @@
+services:
+  postgres:
+    network_mode: host
+    ports: !reset []
+    networks: !reset []
+  redis:
+    network_mode: host
+    ports: !reset []
+    networks: !reset []
+  migrate:
+    network_mode: host
+    networks: !reset []
+    environment:
+      PGHOST: "127.0.0.1"
+      PGPORT: "5432"
+  worker:
+    network_mode: host
+    networks: !reset []
+    environment:
+      UCSI_DATABASE_URL: "postgres://${POSTGRES_USER:-ucsi}:${POSTGRES_PASSWORD:-ucsi}@127.0.0.1:5432/${POSTGRES_DB:-ucsi}?sslmode=disable"
+      UCSI_REDIS_URL: "redis://127.0.0.1:6379/0"
+  scheduler:
+    network_mode: host
+    networks: !reset []
+    environment:
+      UCSI_DATABASE_URL: "postgres://${POSTGRES_USER:-ucsi}:${POSTGRES_PASSWORD:-ucsi}@127.0.0.1:5432/${POSTGRES_DB:-ucsi}?sslmode=disable"
+      UCSI_REDIS_URL: "redis://127.0.0.1:6379/0"
+  api:
+    network_mode: host
+    ports: !reset []
+    networks: !reset []
+    environment:
+      UCSI_DATABASE_URL: "postgres://${POSTGRES_USER:-ucsi}:${POSTGRES_PASSWORD:-ucsi}@127.0.0.1:5432/${POSTGRES_DB:-ucsi}?sslmode=disable"
+      UCSI_REDIS_URL: "redis://127.0.0.1:6379/0"
+      UCSI_API_ADDR: "127.0.0.1:8080"
+  web:
+    network_mode: host
+    ports: !reset []
+    networks: !reset []
+    environment:
+      HOSTNAME: "127.0.0.1"
+      UCSI_INTERNAL_API: "http://127.0.0.1:8080"
+      UCSI_API_TOKEN: ${UCSI_API_TOKEN:-dev-token-change-me}
+  nginx:
+    image: nginx:alpine
+    network_mode: host
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    restart: always

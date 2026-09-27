@@ -1,0 +1,144 @@
+name: ucsi
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    network_mode: host
+    restart: unless-stopped
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+    environment:
+      POSTGRES_DB: ucsi
+      POSTGRES_USER: ucsi
+      POSTGRES_PASSWORD: ${UCSI_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ucsi -d ucsi"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8.6-alpine
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1"
+      - --bind
+      - 127.0.0.1
+      - --protected-mode
+      - "yes"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "127.0.0.1", "PING"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: postgres:18-alpine
+    network_mode: host
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/db/migrate.sh"]
+    volumes:
+      - ./db:/db:ro
+    environment:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: ucsi
+      PGPASSWORD: ${UCSI_DB_PASSWORD}
+      PGDATABASE: ucsi
+
+  api:
+    image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-api:${UCSI_VERSION:-stable}
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./runtime:/run/ucsi
+    environment:
+      UCSI_API_ADDR: 127.0.0.1:8080
+      UCSI_API_TOKEN: ${UCSI_API_TOKEN}
+      UCSI_DATABASE_URL: postgres://ucsi:${UCSI_DB_PASSWORD}@127.0.0.1:5432/ucsi?sslmode=disable
+      UCSI_REDIS_URL: redis://127.0.0.1:6379/0
+      UCSI_CORS_ORIGINS: https://${UCSI_DOMAIN}
+      UCSI_CT_ENABLED: ${UCSI_CT_ENABLED:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/system/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  worker:
+    image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-worker:${UCSI_VERSION:-stable}
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      UCSI_DATABASE_URL: postgres://ucsi:${UCSI_DB_PASSWORD}@127.0.0.1:5432/ucsi?sslmode=disable
+      UCSI_REDIS_URL: redis://127.0.0.1:6379/0
+
+  scheduler:
+    image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-scheduler:${UCSI_VERSION:-stable}
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      UCSI_DATABASE_URL: postgres://ucsi:${UCSI_DB_PASSWORD}@127.0.0.1:5432/ucsi?sslmode=disable
+      UCSI_REDIS_URL: redis://127.0.0.1:6379/0
+
+  web:
+    image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-web:${UCSI_VERSION:-stable}
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      HOSTNAME: 127.0.0.1
+      UCSI_INTERNAL_API: http://127.0.0.1:8080
+      UCSI_API_TOKEN: ${UCSI_API_TOKEN}
+
+  caddy:
+    image: caddy:2-alpine
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      UCSI_DOMAIN: ${UCSI_DOMAIN}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

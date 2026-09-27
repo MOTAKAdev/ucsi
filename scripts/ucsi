@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+INSTALL_DIR="${UCSI_INSTALL_DIR:-/opt/ucsi}"
+[[ -d "$INSTALL_DIR" ]] || { echo "[UCSI] Install directory not found: $INSTALL_DIR" >&2; exit 1; }
+cd "$INSTALL_DIR"
+
+log() { printf '[UCSI] %s\n' "$*"; }
+die() { printf '[UCSI][ERROR] %s\n' "$*" >&2; exit 1; }
+
+case "${1:-status}" in
+  status)
+    docker compose ps
+    printf '\nAPI health:\n'
+    curl -fsS http://127.0.0.1:8080/api/v1/system/health || true
+    printf '\n'
+    ;;
+  doctor)
+    . /etc/os-release
+    printf 'OS: %s %s\n' "${PRETTY_NAME:-unknown}" "${VERSION_ID:-unknown}"
+    printf 'Kernel: '; uname -sr
+    printf 'Arch: '; uname -m
+    printf 'Docker: '; docker --version
+    printf 'Compose: '; docker compose version
+    printf '\nPorts:\n'
+    ss -ltnH | awk '{print $4}' | grep -E ':(80|443|5432|6379|8080|3000)$' || true
+    printf '\nServices:\n'
+    docker compose ps
+    printf '\nAPI health:\n'
+    curl -fsS http://127.0.0.1:8080/api/v1/system/health || true
+    printf '\n'
+    ;;
+  logs)
+    service="${2:-api}"
+    docker compose logs --tail=200 -f "$service"
+    ;;
+  start) docker compose up -d ;;
+  stop) docker compose stop ;;
+  restart) docker compose restart ;;
+  update)
+    target="${2:-stable}"
+    if [[ "$target" == "stable" ]]; then
+      git fetch --tags origin
+      git checkout main >/dev/null 2>&1 || true
+      git pull --ff-only origin main >/dev/null
+    else
+      git fetch --tags origin
+      git checkout --force "$target" >/dev/null
+    fi
+    sed -i -E "s/^UCSI_VERSION=.*/UCSI_VERSION=$target/" .env
+    docker compose pull postgres redis api worker scheduler web caddy
+    docker compose run --rm migrate
+    docker compose up -d
+    log "Updated to $target."
+    ;;
+  rollback)
+    target="${2:?usage: ucsi rollback vX.Y.Z}"
+    git fetch --tags origin
+    git checkout --force "$target" >/dev/null
+    sed -i -E "s/^UCSI_VERSION=.*/UCSI_VERSION=$target/" .env
+    docker compose pull postgres redis api worker scheduler web caddy
+    docker compose run --rm migrate || die "Migration failed during rollback."
+    docker compose up -d
+    log "Rolled back to $target."
+    ;;
+  backup)
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    mkdir -p backups
+    umask 077
+    docker compose exec -T postgres pg_dump -U ucsi -d ucsi | gzip -9 > "backups/ucsi-db-$stamp.sql.gz"
+    cp .env "backups/ucsi-env-$stamp"
+    log "Backup created in $INSTALL_DIR/backups"
+    ;;
+  uninstall)
+    purge="false"
+    [[ "${2:-}" == "--purge" ]] && purge="true"
+    docker compose down
+    rm -f /usr/local/bin/ucsi
+    if [[ "$purge" == "true" ]]; then
+      docker compose down -v
+      rm -rf "$INSTALL_DIR"
+      log "UCSI and persistent volumes removed."
+    else
+      log "UCSI stopped. Persistent data was kept."
+    fi
+    ;;
+  *)
+    cat <<'EOF'
+Usage: ucsi <command>
+
+Commands:
+  status
+  doctor
+  logs [service]
+  start
+  stop
+  restart
+  update [stable|vX.Y.Z]
+  rollback vX.Y.Z
+  backup
+  uninstall [--purge]
+EOF
+    exit 2
+    ;;
+esac

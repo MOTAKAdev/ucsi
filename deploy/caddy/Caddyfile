@@ -1,0 +1,8 @@
+${UCSI_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000
+    log {
+        output file /data/access.log
+        format json
+    }
+}

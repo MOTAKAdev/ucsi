@@ -1,0 +1,40 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.1'
+      - run: gofmt -w apps/api
+      - run: go test ./apps/api/...
+      - run: go vet ./apps/api/...
+  web:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: apps/web}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with: {node-version: '22'}
+      - run: npm ci --omit=optional
+      - run: npm run build
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n install.sh scripts/ucsi
+
+  compose:
+    runs-on: ubuntu-latest
+    needs: [go, web, packaging]
+    env:
+      UCSI_DB_PASSWORD: ci-test-password
+      UCSI_API_TOKEN: ci-test-token
+      UCSI_DOMAIN: example.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
