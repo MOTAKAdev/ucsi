@@ -174,6 +174,14 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 	}
 
 	candidates := loadCandidates(ctx, candidateFile)
+
+	// Always include the target server's PTR hostname when available.
+	// It is a high-value SNI candidate for arbitrary server IPs and does not
+	// require the hostname to appear in global ranking lists.
+	if ptrs, err := net.DefaultResolver.LookupAddr(ctx, origin); err == nil && len(ptrs) > 0 {
+		candidates = uniqueCandidates(append(ptrs, candidates...))
+	}
+
 	if len(candidates) == 0 {
 		return AutoResult{}, fmt.Errorf("no SNI candidates configured")
 	}
@@ -573,8 +581,6 @@ func fastScreen(ctx context.Context, origin, candidate string, timeout time.Dura
 		Target: fmt.Sprintf("%s:443", origin),
 		Status: "NOT_READY",
 	}
-	candidateCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	ip := net.ParseIP(origin)
 	if ip == nil || ip.To4() == nil {
@@ -582,26 +588,32 @@ func fastScreen(ctx context.Context, origin, candidate string, timeout time.Dura
 		return res
 	}
 
-	o := tlsProbe(candidateCtx, "", ip.To4(), 443, candidate, timeout)
-	if !o.OK {
-		res.Reason = "TLS/SNI/HTTP2 gate failed"
+	ev := probeWeb(ctx, origin, ip.To4(), candidate, timeout)
+	if !ev.OK {
+		res.Reason = "HTTPS capability probe failed"
 		return res
 	}
 
 	res.IP = ip.To4().String()
-	res.TLS13 = o.TLS13
-	res.H2 = o.H2
-	res.SNIAccepted = o.SNIAccepted
-	res.CertValid = o.CertValid
-	res.ALPN = o.ALPN
-	res.TCPConnectMS = o.TCPMS
-	res.TLSHandshakeMS = o.TLSMS
-	res.ServerToSNIMS = o.TCPMS + o.TLSMS
+	res.TLS13 = ev.TLS13
+	res.H2 = ev.H2
+	res.SNIAccepted = ev.SNIAccepted
+	res.CertValid = ev.CertValid
+	res.ALPN = ev.ALPN
+	res.HTTPStatus = ev.HTTPStatus
+	res.HTTPProtocol = ev.HTTPProtocol
+	res.HTTP3Advertised = ev.H3Advertised
+	res.HTTP3 = boolPtr(ev.H3Advertised)
+	res.Redirects = ev.Redirects
+	res.RedirectTarget = ev.RedirectTarget
+	res.TCPConnectMS = ev.TCPMS
+	res.TLSHandshakeMS = ev.TLSMS
+	res.ServerToSNIMS = ev.TCPMS + ev.TLSMS
 	res.LatencyMS = res.ServerToSNIMS
-	res.CertSubject = o.CertSubject
-	res.CertIssuer = o.CertIssuer
-	res.CertExpiresAt = o.CertExpires
-	res.CertSANs = o.CertSANs
+	res.CertSubject = ev.CertSubject
+	res.CertIssuer = ev.CertIssuer
+	res.CertExpiresAt = ev.CertExpires
+	res.CertSANs = ev.CertSANs
 	res.Status = "PROVISIONAL"
 	return res
 }
@@ -655,7 +667,7 @@ func scanQualified(ctx context.Context, origin string, base CandidateResult, tar
 	}
 	if !httpReady(res) {
 		res.Status = "NOT_READY"
-		res.Reason = "HTTP/2 + certificate + HTTP/3 validation failed"
+		res.Reason = "HTTP/2 + certificate + HTTP/3 Alt-Svc validation failed"
 		return res
 	}
 
@@ -704,9 +716,7 @@ func tlsReady(r CandidateResult) bool {
 
 func httpReady(r CandidateResult) bool {
 	return tlsReady(r) &&
-		r.HTTP3Advertised &&
-		r.HTTP3 != nil &&
-		*r.HTTP3
+		r.HTTP3Advertised
 }
 
 func mandatoryReady(r CandidateResult) bool {
