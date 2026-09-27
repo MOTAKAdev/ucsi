@@ -6,13 +6,13 @@ UCSI is a self-hosted measurement platform for authorized TLS/SNI endpoint testi
 
 On a fresh supported Linux server:
 
-    curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi-current-audit/main/install.sh | sudo bash
+    curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi/main/install.sh | sudo bash
 
 The installer installs Docker when needed, generates unique secrets, validates the server public IPv4, checks DNS, pulls prebuilt multi-architecture images, runs database migrations, starts the stack, and enables automatic HTTPS with Caddy.
 
 You can also provide the domain non-interactively:
 
-    curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi-current-audit/main/install.sh | sudo bash -s -- --domain ucsi.example.com
+    curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi/main/install.sh | sudo bash -s -- --domain ucsi.example.com
 
 ## Requirements
 
