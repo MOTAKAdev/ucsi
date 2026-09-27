@@ -18,7 +18,7 @@ You can also provide the domain non-interactively:
 
 First-class support is Ubuntu and Debian on amd64 or arm64.
 
-The measurement engine requires a directly assigned public IPv4 because it binds outbound TCP and UDP probes to the server source address.
+Automatic SNI scanning treats the entered public IPv4 as the remote destination. Outbound TCP/UDP probes use ephemeral local addresses, so the scanner can test arbitrary public IPv4 destinations.
 
 Before installation:
 - Create an A record for the chosen domain pointing to the server IPv4.
@@ -74,7 +74,7 @@ Database migrations must remain backward-compatible for supported rollback paths
 
 Internet -> Caddy :80/:443 -> Next.js :3000 -> UCSI API :8080 -> PostgreSQL / Redis
 
-The API uses host networking because source-bound TCP/UDP measurements need the server public IPv4. PostgreSQL and Redis are explicitly bound to localhost.
+The API uses host networking for predictable low-level network measurements. PostgreSQL and Redis are explicitly bound to localhost.
 
 ## Release model
 
