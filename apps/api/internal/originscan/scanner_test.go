@@ -31,7 +31,7 @@ func TestPercentileNearestRank(t *testing.T) {
 	}
 }
 
-func TestMandatoryReadyRequiresRealHTTP3(t *testing.T) {
+func TestMandatoryReadyRequiresAltSvc(t *testing.T) {
 	x := true
 	r := CandidateResult{
 		TLS13:          true,
@@ -45,11 +45,22 @@ func TestMandatoryReadyRequiresRealHTTP3(t *testing.T) {
 		PostQuantum:     &x,
 	}
 	if !mandatoryReady(r) {
-		t.Fatal("expected full mandatory result to be ready")
+		t.Fatal("expected full mandatory result to be ready with Alt-Svc")
 	}
 	x = false
 	r.HTTP3 = &x
 	if mandatoryReady(r) {
-		t.Fatal("expected failed HTTP3 handshake to block readiness")
+		t.Fatal("expected HTTP/3 advertisement to be required for readiness")
+	}
+}
+
+func TestVerifyOriginAcceptsArbitraryPublicIP(t *testing.T) {
+	t.Setenv("PIKIFY_ORIGIN_IP", "206.1.103.54")
+	got, err := verifyOrigin("89.163.157.94")
+	if err != nil {
+		t.Fatalf("verifyOrigin returned error for arbitrary public IP: %v", err)
+	}
+	if got != "89.163.157.94" {
+		t.Fatalf("verifyOrigin = %q, want 89.163.157.94", got)
 	}
 }
