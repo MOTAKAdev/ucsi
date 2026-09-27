@@ -73,7 +73,8 @@ fi
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required."
 
 if [[ -z "$DOMAIN" && "$NON_INTERACTIVE" != "true" ]]; then
-  read -r -p "Domain for UCSI (example: ucsi.example.com): " DOMAIN
+  [[ -e /dev/tty ]] || die "Interactive domain input requires a terminal. Use --domain DOMAIN."
+  read -r -p "Domain for UCSI (example: ucsi.example.com): " DOMAIN </dev/tty
 fi
 [[ -n "$DOMAIN" ]] || die "A domain is required."
 
