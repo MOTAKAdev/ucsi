@@ -364,12 +364,58 @@ func verifyOrigin(raw string) (string, error) {
 		return "", fmt.Errorf("server IPv4 is required")
 	}
 	normalized := parsed.To4().String()
+
+	// Origin measurements are source-bound. The origin IP must therefore
+	// actually exist on the machine running the API; otherwise every probe
+	// fails with a local bind error and the UI receives an empty result set.
+	local := false
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, addr := range addrs {
+			var candidate net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				candidate = v.IP
+			case *net.IPAddr:
+				candidate = v.IP
+			}
+			if candidate != nil && candidate.To4() != nil &&
+				candidate.To4().String() == normalized {
+				local = true
+				break
+			}
+		}
+	}
+	if !local {
+		return "", fmt.Errorf("server IPv4 %s is not assigned to this UCSI server; install UCSI on that server or enter %s", normalized, detectedLocalIPv4())
+	}
+
 	if expected := strings.TrimSpace(os.Getenv("PIKIFY_ORIGIN_IP")); expected != "" {
 		if expectedParsed := net.ParseIP(expected); expectedParsed == nil || expectedParsed.To4() == nil || expectedParsed.To4().String() != normalized {
 			return "", fmt.Errorf("entered server IP does not match the configured Pikify server origin")
 		}
 	}
 	return normalized, nil
+}
+
+func detectedLocalIPv4() string {
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, addr := range addrs {
+			var candidate net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				candidate = v.IP
+			case *net.IPAddr:
+				candidate = v.IP
+			}
+			if candidate != nil && candidate.To4() != nil {
+				ip := candidate.To4()
+				if !ip.IsLoopback() && !ip.IsPrivate() {
+					return ip.String()
+				}
+			}
+		}
+	}
+	return "the local public IPv4"
 }
 
 func loadCandidates(ctx context.Context, path string) []string {
