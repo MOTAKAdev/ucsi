@@ -31,7 +31,7 @@ const (
 	maxCandidates        = 1200
 	qualifiedKeep        = 15
 	deepCandidates = 72
-	tlsGateConcurrency   = 16
+	tlsGateConcurrency   = 8
 	deepConcurrency      = 18
 	tlsGateTO            = 1200 * time.Millisecond
 	deepTO               = 2500 * time.Millisecond
@@ -200,10 +200,71 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 	}
 
 	started := time.Now()
-	fast := make([]CandidateResult, len(candidates))
+
+	// Probe target-specific names first, before touching the large public
+	// candidate set. This prevents broad SNI fan-out from rate-limiting the
+	// destination before we test the names actually associated with this IP.
+	qualified := make([]CandidateResult, 0, qualifiedKeep*2)
+	seenQualified := make(map[string]struct{}, len(priorityCandidates))
+	prioritySem := make(chan struct{}, 3)
+	priorityResults := make([]CandidateResult, len(priorityCandidates))
+	priorityOK := make([]bool, len(priorityCandidates))
+	var pwg sync.WaitGroup
+	for i, candidate := range priorityCandidates {
+		pwg.Add(1)
+		go func(i int, candidate string) {
+			defer pwg.Done()
+			select {
+			case prioritySem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-prioritySem }()
+
+			base := CandidateResult{
+				SNI:    candidate,
+				Target: fmt.Sprintf("%s:443", origin),
+				IP:     origin,
+				Status: "NOT_READY",
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				res := scanQualified(ctx, origin, base, candidate, samples, deepTO)
+				if mandatoryReady(res) && res.Stability >= 1 {
+					priorityResults[i] = res
+					priorityOK[i] = true
+					return
+				}
+				if err := ctx.Err(); err != nil {
+					return
+				}
+			}
+		}(i, candidate)
+	}
+	pwg.Wait()
+	if err := ctx.Err(); err != nil {
+		return AutoResult{}, err
+	}
+	for i := range priorityResults {
+		if priorityOK[i] {
+			qualified = append(qualified, priorityResults[i])
+			seenQualified[priorityResults[i].SNI] = struct{}{}
+		}
+	}
+
+	// Broad discovery deliberately excludes names already tested in the
+	// target-specific pass.
+	broadCandidates := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, seen := seenQualified[candidate]; seen {
+			continue
+		}
+		broadCandidates = append(broadCandidates, candidate)
+	}
+
+	fast := make([]CandidateResult, len(broadCandidates))
 	sem := make(chan struct{}, tlsGateConcurrency)
 	var wg sync.WaitGroup
-	for i, candidate := range candidates {
+	for i, candidate := range broadCandidates {
 		wg.Add(1)
 		go func(i int, candidate string) {
 			defer wg.Done()
@@ -232,7 +293,6 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 		gate = gate[:deepCandidates]
 	}
 
-	qualified := make([]CandidateResult, 0, qualifiedKeep*2)
 	deepSem := make(chan struct{}, deepConcurrency)
 	phase2 := make([]CandidateResult, len(gate))
 	phase2OK := make([]bool, len(gate))
@@ -264,28 +324,6 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 		}
 	}
 
-	// Target-specific names get a dedicated deep pass so transient failures
-	// in the broad discovery fan-out cannot hide the real names associated with
-	// this exact destination IP.
-	seenQualified := make(map[string]struct{}, len(qualified))
-	for _, r := range qualified {
-		seenQualified[r.SNI] = struct{}{}
-	}
-	for _, candidate := range priorityCandidates {
-		if _, seen := seenQualified[candidate]; seen {
-			continue
-		}
-		res := scanQualified(ctx, origin, CandidateResult{
-			SNI:    candidate,
-			Target: fmt.Sprintf("%s:443", origin),
-			IP:     origin,
-			Status: "NOT_READY",
-		}, candidate, samples, deepTO)
-		if mandatoryReady(res) && res.Stability >= 1 {
-			qualified = append(qualified, res)
-			seenQualified[candidate] = struct{}{}
-		}
-	}
 
 	assignRankingScores(qualified)
 	qualifiedTotal := len(qualified)
