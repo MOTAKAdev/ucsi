@@ -944,7 +944,7 @@ func probeWeb(ctx context.Context, origin string, ip net.IP, sni string, timeout
 		TLSHandshakeStart: func() {
 			tlsStart = time.Now()
 		},
-		TLSHandshakeDone: func(_ *tls.ConnectionState, err error) {
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
 			if err == nil && !tlsStart.IsZero() {
 				out.TLSMS = float64(time.Since(tlsStart).Microseconds()) / 1000
 			}
