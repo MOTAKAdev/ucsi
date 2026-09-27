@@ -59,6 +59,10 @@ services:
       PGDATABASE: ucsi
 
   api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: api
     image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-api:${UCSI_VERSION:-stable}
     network_mode: host
     restart: unless-stopped
@@ -87,6 +91,10 @@ services:
       start_period: 10s
 
   worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: worker
     image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-worker:${UCSI_VERSION:-stable}
     network_mode: host
     restart: unless-stopped
@@ -100,6 +108,10 @@ services:
       UCSI_REDIS_URL: redis://127.0.0.1:6379/0
 
   scheduler:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: scheduler
     image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-scheduler:${UCSI_VERSION:-stable}
     network_mode: host
     restart: unless-stopped
@@ -113,6 +125,9 @@ services:
       UCSI_REDIS_URL: redis://127.0.0.1:6379/0
 
   web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
     image: ${UCSI_IMAGE_PREFIX:-ghcr.io/motakadev}/ucsi-web:${UCSI_VERSION:-stable}
     network_mode: host
     restart: unless-stopped
