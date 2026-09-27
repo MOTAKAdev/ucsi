@@ -262,7 +262,7 @@ async function measureClientDelay(
 
     const timer = window.setTimeout(
       () => controller.abort(),
-      4500,
+      2500,
     );
 
     const start = performance.now();
@@ -298,7 +298,7 @@ async function measureClientDelay(
       window.clearTimeout(timer);
     }
 
-    await sleep(35);
+    await sleep(10);
   }
 
   if (!values.length) return null;
@@ -987,7 +987,7 @@ export default function Home() {
         Array.from(
           {
             length: Math.min(
-              5,
+              15,
               pool.length,
             ),
           },
