@@ -1180,6 +1180,18 @@ export default function Home() {
 
     setAuto(response);
     setCooldown(5);
+
+    // A valid scan can legitimately produce zero qualified SNIs.
+    // Complete the server phase so the UI renders NO MATCH instead of
+    // remaining in an empty state forever.
+    if (!response.results?.length) {
+      setClientRankingBusy(false);
+      setFinalAutoResults([]);
+      setClientDelays({});
+      setClientDelayLoading({});
+      setClientMeasuredCount(0);
+      setScanStage('complete');
+    }
   } catch (e) {
     const err =
       e as Error & {
