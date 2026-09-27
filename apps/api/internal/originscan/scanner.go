@@ -406,7 +406,11 @@ var wg sync.WaitGroup
 	wg.Wait()
 
 	combined := make([]string, 0, maxCandidates*4)
-	// Always keep deterministic high-value fallback SNIs inside the scan window.
+	// Keep the deployment hostname and deterministic high-value fallback SNIs
+	// inside the scan window even when public ranking feeds change.
+	if domain := strings.TrimSpace(os.Getenv("UCSI_DOMAIN")); domain != "" {
+		combined = append(combined, domain)
+	}
 	combined = append(combined, DefaultCandidates...)
 	combined = append(combined, diversifySource(tranco, 900)...)
 	combined = append(combined, diversifySource(majestic, 900)...)
