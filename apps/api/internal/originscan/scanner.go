@@ -634,33 +634,31 @@ func fastScreen(ctx context.Context, origin, candidate string, timeout time.Dura
 		return res
 	}
 
-	ev := probeWeb(ctx, origin, ip.To4(), candidate, timeout)
-	if !ev.OK {
-		res.Reason = "HTTPS capability probe failed"
+	// Discovery phase deliberately uses TLS-only handshakes. Running a full
+	// HTTP GET for every candidate creates unnecessary application-layer load
+	// on the single destination IP. HTTP/2, certificate, Alt-Svc and HTTP/3
+	// are measured only for candidates that pass the TLS gate.
+	obs := tlsProbe(ctx, origin, ip.To4(), 443, candidate, timeout)
+	if !obs.OK || !obs.TLS13 || !obs.H2 || obs.ALPN != "h2" || !obs.SNIAccepted || !obs.CertValid {
+		res.Reason = "TLS capability probe failed"
 		return res
 	}
 
 	res.IP = ip.To4().String()
-	res.TLS13 = ev.TLS13
-	res.H2 = ev.H2
-	res.SNIAccepted = ev.SNIAccepted
-	res.CertValid = ev.CertValid
-	res.ALPN = ev.ALPN
-	res.HTTPStatus = ev.HTTPStatus
-	res.HTTPProtocol = ev.HTTPProtocol
-	res.HTTP3Advertised = ev.H3Advertised
-	res.HTTP3 = boolPtr(ev.H3Advertised)
-	res.Redirects = ev.Redirects
-	res.RedirectTarget = ev.RedirectTarget
-	res.TCPConnectMS = ev.TCPMS
-	res.TLSHandshakeMS = ev.TLSMS
-	res.ServerToSNIMS = ev.TCPMS + ev.TLSMS
+	res.TLS13 = obs.TLS13
+	res.H2 = obs.H2
+	res.SNIAccepted = obs.SNIAccepted
+	res.CertValid = obs.CertValid
+	res.ALPN = obs.ALPN
+	res.TCPConnectMS = obs.TCPMS
+	res.TLSHandshakeMS = obs.TLSMS
+	res.ServerToSNIMS = obs.TCPMS + obs.TLSMS
 	res.LatencyMS = res.ServerToSNIMS
-	res.CertSubject = ev.CertSubject
-	res.CertIssuer = ev.CertIssuer
-	res.CertExpiresAt = ev.CertExpires
-	res.CertSANs = ev.CertSANs
-	res.Status = "PROVISIONAL"
+	res.CertSubject = obs.CertSubject
+	res.CertIssuer = obs.CertIssuer
+	res.CertExpiresAt = obs.CertExpires
+	res.CertSANs = obs.CertSANs
+	res.Status = "TLS_READY"
 	return res
 }
 
