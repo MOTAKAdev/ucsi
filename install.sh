@@ -7,7 +7,7 @@ DEFAULT_VERSION="stable"
 
 DOMAIN=""
 INSTALL_DIR="$DEFAULT_DIR"
-VERSION="$DEFAULT_VERSION"
+UCSI_VERSION="$DEFAULT_VERSION"
 ORIGIN_IP=""
 SKIP_DNS_CHECK="false"
 NO_FIREWALL="false"
@@ -37,7 +37,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --domain) DOMAIN="${2:?missing domain}"; shift 2 ;;
-    --version) VERSION="${2:?missing version}"; shift 2 ;;
+    --version) UCSI_VERSION="${2:?missing version}"; shift 2 ;;
     --dir) INSTALL_DIR="${2:?missing directory}"; shift 2 ;;
     --origin-ip) ORIGIN_IP="${2:?missing origin IP}"; shift 2 ;;
     --skip-dns-check) SKIP_DNS_CHECK="true"; shift ;;
@@ -123,10 +123,10 @@ fi
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   mkdir -p "$(dirname "$INSTALL_DIR")"
   log "Downloading UCSI..."
-  if [[ "$VERSION" == "stable" ]]; then
+  if [[ "$UCSI_VERSION" == "stable" ]]; then
     git clone --depth 1 "$REPO" "$INSTALL_DIR" >/dev/null
   else
-    git clone --depth 1 --branch "$VERSION" "$REPO" "$INSTALL_DIR" >/dev/null
+    git clone --depth 1 --branch "$UCSI_VERSION" "$REPO" "$INSTALL_DIR" >/dev/null
   fi
 fi
 
@@ -140,7 +140,7 @@ else
   DB_PASSWORD="$(openssl rand -hex 24)"
   API_TOKEN="$(openssl rand -hex 32)"
   cat > .env <<EOF
-UCSI_VERSION=$VERSION
+UCSI_VERSION=$UCSI_VERSION
 UCSI_IMAGE_PREFIX=ghcr.io/motakadev
 UCSI_DOMAIN=$DOMAIN
 UCSI_DB_PASSWORD=$DB_PASSWORD
