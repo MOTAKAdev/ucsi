@@ -570,26 +570,23 @@ func fetchMajestic(ctx context.Context) ([]string, error) {
 func fastScreen(ctx context.Context, origin, candidate string, timeout time.Duration) CandidateResult {
 	res := CandidateResult{
 		SNI:    candidate,
-		Target: fmt.Sprintf("%s:443", candidate),
+		Target: fmt.Sprintf("%s:443", origin),
 		Status: "NOT_READY",
 	}
 	candidateCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ips, err := security.ResolvePublic(candidateCtx, candidate)
-	if err != nil {
-		res.Reason = "Public DNS resolution failed"
+
+	// The entered server IP is the destination being tested. The candidate
+	// hostname is used only as TLS SNI/HTTP Host; never resolve the candidate
+	// and never bind the candidate test to the entered IP as a local source.
+	ip := net.ParseIP(origin)
+	if ip == nil || ip.To4() == nil {
+		res.Reason = "Invalid origin IP"
 		return res
 	}
-	for _, ipAddr := range filterIPv4(ips) {
-		ip := ipAddr.IP.To4()
-		if ip == nil {
-			continue
-		}
-		o := tlsProbe(candidateCtx, origin, ip, 443, candidate, timeout)
-		if !o.OK {
-			continue
-		}
-		res.IP = ip.String()
+	o := tlsProbe(candidateCtx, "", ip.To4(), 443, candidate, timeout)
+	if o.OK {
+		res.IP = ip.To4().String()
 		res.TLS13 = o.TLS13
 		res.H2 = o.H2
 		res.SNIAccepted = o.SNIAccepted
@@ -971,16 +968,12 @@ type http3Evidence struct {
 
 func probeHTTP3(ctx context.Context, origin string, ip net.IP, sni string, timeout time.Duration) http3Evidence {
 	out := http3Evidence{}
-	if ip == nil || sni == "" || origin == "" {
-		return out
-	}
-	localIP := net.ParseIP(origin)
-	if localIP == nil || localIP.To4() == nil {
+	if ip == nil || sni == "" {
 		return out
 	}
 	localCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: localIP.To4(), Port: 0})
+	udpConn, err := net.ListenUDP("udp4", nil)
 	if err != nil {
 		return out
 	}
@@ -1031,7 +1024,7 @@ func tlsProbe(ctx context.Context, origin string, ip net.IP, port int, sni strin
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
-	conn, err := (&net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: net.ParseIP(origin), Port: 0}}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
 	if err != nil {
 		out.Error = err.Error()
 		return out
