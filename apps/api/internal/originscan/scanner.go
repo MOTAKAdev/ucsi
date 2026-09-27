@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"sort"
@@ -371,13 +372,7 @@ func verifyOrigin(raw string) (string, error) {
 	if parsed == nil || parsed.To4() == nil {
 		return "", fmt.Errorf("server IPv4 is required")
 	}
-	normalized := parsed.To4().String()
-	if expected := strings.TrimSpace(os.Getenv("PIKIFY_ORIGIN_IP")); expected != "" {
-		if expectedParsed := net.ParseIP(expected); expectedParsed == nil || expectedParsed.To4() == nil || expectedParsed.To4().String() != normalized {
-			return "", fmt.Errorf("entered server IP does not match the configured Pikify server origin")
-		}
-	}
-	return normalized, nil
+	return parsed.To4().String(), nil
 }
 
 func loadCandidates(ctx context.Context, path string) []string {
@@ -411,9 +406,10 @@ var wg sync.WaitGroup
 	wg.Wait()
 
 	combined := make([]string, 0, maxCandidates*4)
+	// Always keep deterministic high-value fallback SNIs inside the scan window.
+	combined = append(combined, DefaultCandidates...)
 	combined = append(combined, diversifySource(tranco, 900)...)
 	combined = append(combined, diversifySource(majestic, 900)...)
-	combined = append(combined, DefaultCandidates...)
 	list := uniqueCandidates(combined)
 
 	candidateCache.Lock()
@@ -892,6 +888,18 @@ func probeWeb(ctx context.Context, origin string, ip net.IP, sni string, timeout
 	if ip == nil || sni == "" {
 		return out
 	}
+
+	var tlsStart time.Time
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		TLSHandshakeStart: func() {
+			tlsStart = time.Now()
+		},
+		TLSHandshakeDone: func(_ *tls.ConnectionState, err error) {
+			if err == nil && !tlsStart.IsZero() {
+				out.TLSMS = float64(time.Since(tlsStart).Microseconds()) / 1000
+			}
+		},
+	})
 
 	connPort := "443"
 	tr := &http.Transport{
