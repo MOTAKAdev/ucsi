@@ -360,9 +360,9 @@ func ManualScan(ctx context.Context, originIP, sni, target string, port, samples
 	}
 
 
-	res.Target = fmt.Sprintf("%s:%d", normalizedTarget, port)
-	res.Rank = 1
-	return res, nil
+	base.Rank = 1
+	base.Reason = "HTTPS capability probe failed"
+	return base, nil
 }
 
 func verifyOrigin(raw string) (string, error) {
