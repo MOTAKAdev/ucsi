@@ -1166,6 +1166,18 @@ export default function Home() {
       return;
     }
 
+    // Keep the server-qualified results available immediately.
+    // Client measurements refine the ranking in the background and must
+    // never make an otherwise valid scan appear empty.
+    if (response.results?.length) {
+      setFinalAutoResults(
+        response.results.slice(0, 3).map((result, index) => ({
+          ...result,
+          rank: index + 1,
+        })),
+      );
+    }
+
     setAuto(response);
     setCooldown(5);
   } catch (e) {
@@ -1658,8 +1670,10 @@ export default function Home() {
         </section>
 
         {auto &&
-          scanStage === 'complete' &&
+          scanStage !== 'idle' &&
+          scanStage !== 'server' &&
           !clientRankingBusy &&
+          scanStage === 'complete' &&
           finalAutoResults.length === 0 && (
             <section className="results no-match">
               <div className="results-head">
@@ -1678,8 +1692,8 @@ export default function Home() {
           )}
 
         {auto &&
-          scanStage === 'complete' &&
-          !clientRankingBusy &&
+          scanStage !== 'idle' &&
+          scanStage !== 'server' &&
           finalAutoResults.length > 0 && (
             <section className="results results-reveal">
               <div className="results-head">
