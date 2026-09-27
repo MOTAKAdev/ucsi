@@ -85,7 +85,13 @@ for i in $(seq 1 60); do
 done
 curl -fsS --max-time 5 http://127.0.0.1:3000/ >/dev/null || die "Web health check failed."
 
-log "Testing public HTTPS..."
+log "Waiting for public HTTPS/Caddy..."
+for i in $(seq 1 60); do
+  if curl -fsS --http2 --max-time 10 -o /dev/null "https://$DOMAIN/"; then
+    break
+  fi
+  sleep 2
+done
 curl -fsS --http2 --max-time 15 -o /dev/null "https://$DOMAIN/" || die "Public HTTPS failed."
 
 log "Fresh install complete."
