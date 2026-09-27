@@ -41,9 +41,3 @@ services:
       HOSTNAME: "127.0.0.1"
       UCSI_INTERNAL_API: "http://127.0.0.1:8080"
       UCSI_API_TOKEN: ${UCSI_API_TOKEN:-dev-token-change-me}
-  nginx:
-    image: nginx:alpine
-    network_mode: host
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-    restart: always
