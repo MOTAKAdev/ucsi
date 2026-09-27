@@ -431,7 +431,7 @@ func uniqueCandidates(in []string) []string {
 	seen := make(map[string]struct{}, len(in))
 	out := make([]string, 0, len(in))
 	for _, raw := range in {
-		candidate := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(raw, "\r")))
+		candidate := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(raw, "\r")), "."))
 		if candidate == "" || strings.HasPrefix(candidate, "#") {
 			continue
 		}
