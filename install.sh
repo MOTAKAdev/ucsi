@@ -88,7 +88,7 @@ fi
 [[ "$ORIGIN_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "Could not detect a public IPv4 address. Use --origin-ip."
 
 if ! ip -4 addr show | awk '{print $2}' | cut -d/ -f1 | grep -Fxq "$ORIGIN_IP"; then
-  die "The origin IP ($ORIGIN_IP) is not assigned to a local interface. UCSI requires a directly assigned public IPv4 for source-bound measurements."
+  die "The deployment public IPv4 ($ORIGIN_IP) is not assigned to a local interface. Use --origin-ip with the IP serving this UCSI installation."
 fi
 
 if [[ "$SKIP_DNS_CHECK" != "true" ]]; then
