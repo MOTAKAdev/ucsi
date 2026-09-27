@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO="https://github.com/MOTAKAdev/ucsi-current-audit.git"
+REPO="https://github.com/MOTAKAdev/ucsi.git"
 DEFAULT_DIR="/opt/ucsi"
 DEFAULT_VERSION="stable"
 
@@ -21,7 +21,7 @@ usage() {
 UCSI one-click installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi-current-audit/main/install.sh | sudo bash
+  curl -fsSL https://raw.githubusercontent.com/MOTAKAdev/ucsi/main/install.sh | sudo bash
 
 Options:
   --domain DOMAIN
