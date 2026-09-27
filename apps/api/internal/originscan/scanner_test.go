@@ -32,25 +32,25 @@ func TestPercentileNearestRank(t *testing.T) {
 }
 
 func TestMandatoryReadyRequiresAltSvc(t *testing.T) {
-	x := true
+	ok := true
+	failed := false
 	r := CandidateResult{
-		TLS13:          true,
+		TLS13:           true,
 		H2:              true,
-		SNIAccepted:    true,
-		CertValid:      true,
+		SNIAccepted:     true,
+		CertValid:       true,
 		ALPN:            "h2",
 		HTTP3Advertised: true,
-		HTTP3:           &x,
-		X25519:          &x,
-		PostQuantum:     &x,
+		HTTP3:           &failed,
+		X25519:          &ok,
+		PostQuantum:     &ok,
 	}
 	if !mandatoryReady(r) {
-		t.Fatal("expected full mandatory result to be ready with Alt-Svc")
+		t.Fatal("expected Alt-Svc advertisement to satisfy HTTP/3 gate")
 	}
-	x = false
-	r.HTTP3 = &x
+	r.HTTP3Advertised = false
 	if mandatoryReady(r) {
-		t.Fatal("expected HTTP/3 advertisement to be required for readiness")
+		t.Fatal("expected missing Alt-Svc advertisement to block readiness")
 	}
 }
 
