@@ -176,11 +176,13 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 
 	candidates := loadCandidates(ctx, candidateFile)
 
-	// Always include the target server's PTR hostname when available.
-	// It is a high-value SNI candidate for arbitrary server IPs and does not
-	// require the hostname to appear in global ranking lists.
+	// Add reverse-DNS and default-certificate names before ranking feeds. These
+	// target-specific names are much more valuable for arbitrary server IPs.
 	if ptrs, err := net.DefaultResolver.LookupAddr(ctx, origin); err == nil && len(ptrs) > 0 {
 		candidates = uniqueCandidates(append(ptrs, candidates...))
+	}
+	if bootstrap := bootstrapCertificateCandidates(ctx, origin, tlsGateTO); len(bootstrap) > 0 {
+		candidates = uniqueCandidates(append(bootstrap, candidates...))
 	}
 
 	if len(candidates) == 0 {
@@ -443,6 +445,48 @@ func uniqueCandidates(in []string) []string {
 		out = append(out, candidate)
 	}
 	return out
+}
+
+func bootstrapCertificateCandidates(ctx context.Context, origin string, timeout time.Duration) []string {
+	ip := net.ParseIP(origin)
+	if ip == nil || ip.To4() == nil {
+		return nil
+	}
+	localCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(
+		localCtx,
+		"tcp",
+		net.JoinHostPort(ip.String(), "443"),
+	)
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+
+	tlsConn := tls.Client(conn, &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		MaxVersion:         tls.VersionTLS13,
+		NextProtos:         []string{"h2", "http/1.1"},
+		InsecureSkipVerify: true, // bootstrap metadata only; never used for qualification
+	})
+	if err := tlsConn.HandshakeContext(localCtx); err != nil {
+		return nil
+	}
+	defer tlsConn.Close()
+
+	state := tlsConn.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		return nil
+	}
+	leaf := state.PeerCertificates[0]
+	out := make([]string, 0, 1+len(leaf.DNSNames))
+	if leaf.Subject.CommonName != "" {
+		out = append(out, leaf.Subject.CommonName)
+	}
+	out = append(out, leaf.DNSNames...)
+	return uniqueCandidates(out)
 }
 
 func readCandidateFile(path string) ([]string, error) {
