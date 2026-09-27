@@ -123,6 +123,12 @@ services:
       HOSTNAME: 127.0.0.1
       UCSI_INTERNAL_API: http://127.0.0.1:8080
       UCSI_API_TOKEN: ${UCSI_API_TOKEN}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
 
   caddy:
     image: caddy:2-alpine
@@ -130,7 +136,7 @@ services:
     restart: unless-stopped
     depends_on:
       web:
-        condition: service_started
+        condition: service_healthy
     environment:
       UCSI_DOMAIN: ${UCSI_DOMAIN}
     volumes:
