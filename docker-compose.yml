@@ -74,6 +74,7 @@ services:
     environment:
       UCSI_API_ADDR: 127.0.0.1:8080
       UCSI_API_TOKEN: ${UCSI_API_TOKEN}
+      UCSI_DOMAIN: ${UCSI_DOMAIN}
       UCSI_DATABASE_URL: postgres://ucsi:${UCSI_DB_PASSWORD}@127.0.0.1:5432/ucsi?sslmode=disable
       UCSI_REDIS_URL: redis://127.0.0.1:6379/0
       UCSI_CORS_ORIGINS: https://${UCSI_DOMAIN}
