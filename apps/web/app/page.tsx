@@ -332,7 +332,10 @@ function rankResults(
   results: Result[],
   clientDelays: Record<string, number>,
 ): RankedResult[] {
-  const eligible = results.filter(isReadyResult);
+  // The API already returns server-qualified candidates in `results`.
+  // Do not re-filter them in the browser: browser/runtime field differences
+  // must not turn a valid server result into a false NO MATCH.
+  const eligible = results;
 
   if (!eligible.length) return [];
 
@@ -897,7 +900,7 @@ export default function Home() {
     async function runClientMeasurements() {
       const pool = auto?.results ?? [];
 
-      const serverReady = pool.filter(isReadyResult);
+      const serverReady = pool;
 
       // Show server-qualified candidates immediately. Client measurements
       // refine the ranking, but a browser-side measurement failure must not
