@@ -322,7 +322,6 @@ function isReadyResult(result: Result) {
     result.certificate_valid === true &&
     result.x25519 === true &&
     result.post_quantum === true &&
-    result.http3 === true &&
     result.http3_advertised === true &&
     Number(result.stability) >= 1
   );
