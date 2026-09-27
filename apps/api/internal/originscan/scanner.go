@@ -302,27 +302,25 @@ func ManualScan(ctx context.Context, originIP, sni, target string, port, samples
 		return CandidateResult{}, fmt.Errorf("samples must be between 1 and 3")
 	}
 
-	ips, err := security.ResolvePublic(ctx, normalizedTarget)
-	if err != nil {
-		return CandidateResult{}, fmt.Errorf("target DNS resolution failed: %w", err)
+	targetIP := net.ParseIP(origin)
+	if targetIP == nil || targetIP.To4() == nil {
+		return CandidateResult{}, fmt.Errorf("invalid server IPv4")
+	}
+	if port != 443 {
+		return CandidateResult{}, fmt.Errorf("target port must be 443 for destination-IP SNI probing")
 	}
 
+	// Manual SNI mode uses server_ip as the network destination and target only
+	// as the user-visible hostname. Do not resolve target and accidentally probe
+	// a different address.
 	var base CandidateResult
 	base.SNI = sni
 	base.Target = fmt.Sprintf("%s:%d", normalizedTarget, port)
 	base.Status = "NOT_READY"
 
-	for _, ipAddr := range filterIPv4(ips) {
-		ip := ipAddr.IP.To4()
-		if ip == nil {
-			continue
-		}
-
-		ev := probeWeb(ctx, origin, ip, sni, defaultTO)
-		if !ev.OK {
-			continue
-		}
-
+	ip := targetIP.To4()
+	ev := probeWeb(ctx, origin, ip, sni, defaultTO)
+	if ev.OK {
 		base.IP = ip.String()
 		base.TLS13 = ev.TLS13
 		base.H2 = ev.H2
@@ -348,16 +346,20 @@ func ManualScan(ctx context.Context, originIP, sni, target string, port, samples
 		base.CertSANs = ev.CertSANs
 		base.ServerToSNIMS = ev.TCPMS + ev.TLSMS
 		base.LatencyMS = base.ServerToSNIMS
-		break
+
+		if !httpReady(base) {
+			base.Rank = 1
+			base.Reason = "HTTPS capability probe failed"
+			return base, nil
+		}
+
+		res := scanQualified(ctx, origin, base, normalizedTarget, samples, defaultTO)
+		res.Target = fmt.Sprintf("%s:%d", normalizedTarget, port)
+		res.Rank = 1
+		return res, nil
 	}
 
-	if !httpReady(base) {
-		base.Rank = 1
-		base.Reason = "HTTPS capability probe failed"
-		return base, nil
-	}
 
-	res := scanQualified(ctx, origin, base, normalizedTarget, samples, defaultTO)
 	res.Target = fmt.Sprintf("%s:%d", normalizedTarget, port)
 	res.Rank = 1
 	return res, nil
