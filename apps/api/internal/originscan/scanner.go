@@ -364,58 +364,12 @@ func verifyOrigin(raw string) (string, error) {
 		return "", fmt.Errorf("server IPv4 is required")
 	}
 	normalized := parsed.To4().String()
-
-	// Origin measurements are source-bound. The origin IP must therefore
-	// actually exist on the machine running the API; otherwise every probe
-	// fails with a local bind error and the UI receives an empty result set.
-	local := false
-	if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, addr := range addrs {
-			var candidate net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				candidate = v.IP
-			case *net.IPAddr:
-				candidate = v.IP
-			}
-			if candidate != nil && candidate.To4() != nil &&
-				candidate.To4().String() == normalized {
-				local = true
-				break
-			}
-		}
-	}
-	if !local {
-		return "", fmt.Errorf("server IPv4 %s is not assigned to this UCSI server; install UCSI on that server or enter %s", normalized, detectedLocalIPv4())
-	}
-
 	if expected := strings.TrimSpace(os.Getenv("PIKIFY_ORIGIN_IP")); expected != "" {
 		if expectedParsed := net.ParseIP(expected); expectedParsed == nil || expectedParsed.To4() == nil || expectedParsed.To4().String() != normalized {
 			return "", fmt.Errorf("entered server IP does not match the configured Pikify server origin")
 		}
 	}
 	return normalized, nil
-}
-
-func detectedLocalIPv4() string {
-	if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, addr := range addrs {
-			var candidate net.IP
-			switch v := addr.(type) {
-			case *net.IPNet:
-				candidate = v.IP
-			case *net.IPAddr:
-				candidate = v.IP
-			}
-			if candidate != nil && candidate.To4() != nil {
-				ip := candidate.To4()
-				if !ip.IsLoopback() && !ip.IsPrivate() {
-					return ip.String()
-				}
-			}
-		}
-	}
-	return "the local public IPv4"
 }
 
 func loadCandidates(ctx context.Context, path string) []string {
@@ -616,45 +570,42 @@ func fetchMajestic(ctx context.Context) ([]string, error) {
 func fastScreen(ctx context.Context, origin, candidate string, timeout time.Duration) CandidateResult {
 	res := CandidateResult{
 		SNI:    candidate,
-		Target: fmt.Sprintf("%s:443", candidate),
+		Target: fmt.Sprintf("%s:443", origin),
 		Status: "NOT_READY",
 	}
 	candidateCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ips, err := security.ResolvePublic(candidateCtx, candidate)
-	if err != nil {
-		res.Reason = "Public DNS resolution failed"
+
+	ip := net.ParseIP(origin)
+	if ip == nil || ip.To4() == nil {
+		res.Reason = "Invalid server IPv4"
 		return res
 	}
-	for _, ipAddr := range filterIPv4(ips) {
-		ip := ipAddr.IP.To4()
-		if ip == nil {
-			continue
-		}
-		o := tlsProbe(candidateCtx, origin, ip, 443, candidate, timeout)
-		if !o.OK {
-			continue
-		}
-		res.IP = ip.String()
-		res.TLS13 = o.TLS13
-		res.H2 = o.H2
-		res.SNIAccepted = o.SNIAccepted
-		res.CertValid = o.CertValid
-		res.ALPN = o.ALPN
-		res.TCPConnectMS = o.TCPMS
-		res.TLSHandshakeMS = o.TLSMS
-		res.ServerToSNIMS = o.TCPMS + o.TLSMS
-		res.LatencyMS = res.ServerToSNIMS
-		res.CertSubject = o.CertSubject
-		res.CertIssuer = o.CertIssuer
-		res.CertExpiresAt = o.CertExpires
-		res.CertSANs = o.CertSANs
-		res.Status = "PROVISIONAL"
+
+	o := tlsProbe(candidateCtx, "", ip.To4(), 443, candidate, timeout)
+	if !o.OK {
+		res.Reason = "TLS/SNI/HTTP2 gate failed"
 		return res
 	}
-	res.Reason = "TLS/SNI/HTTP2 gate failed"
+
+	res.IP = ip.To4().String()
+	res.TLS13 = o.TLS13
+	res.H2 = o.H2
+	res.SNIAccepted = o.SNIAccepted
+	res.CertValid = o.CertValid
+	res.ALPN = o.ALPN
+	res.TCPConnectMS = o.TCPMS
+	res.TLSHandshakeMS = o.TLSMS
+	res.ServerToSNIMS = o.TCPMS + o.TLSMS
+	res.LatencyMS = res.ServerToSNIMS
+	res.CertSubject = o.CertSubject
+	res.CertIssuer = o.CertIssuer
+	res.CertExpiresAt = o.CertExpires
+	res.CertSANs = o.CertSANs
+	res.Status = "PROVISIONAL"
 	return res
 }
+
 func scanQualified(ctx context.Context, origin string, base CandidateResult, target string, samples int, timeout time.Duration) CandidateResult {
 	res := base
 	res.Target = fmt.Sprintf("%s:443", target)
@@ -948,7 +899,7 @@ func probeWeb(ctx context.Context, origin string, ip net.IP, sni string, timeout
 	}
 	tr.DialContext = func(c context.Context, _, _ string) (net.Conn, error) {
 		start := time.Now()
-		conn, err := (&net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: net.ParseIP(origin), Port: 0}}).DialContext(c, "tcp", net.JoinHostPort(ip.String(), connPort))
+		conn, err := (&net.Dialer{Timeout: timeout}).DialContext(c, "tcp", net.JoinHostPort(ip.String(), connPort))
 		if err == nil {
 			out.TCPMS = float64(time.Since(start).Microseconds()) / 1000
 		}
@@ -1017,16 +968,12 @@ type http3Evidence struct {
 
 func probeHTTP3(ctx context.Context, origin string, ip net.IP, sni string, timeout time.Duration) http3Evidence {
 	out := http3Evidence{}
-	if ip == nil || sni == "" || origin == "" {
-		return out
-	}
-	localIP := net.ParseIP(origin)
-	if localIP == nil || localIP.To4() == nil {
+	if ip == nil || sni == "" {
 		return out
 	}
 	localCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: localIP.To4(), Port: 0})
+	udpConn, err := net.ListenUDP("udp4", nil)
 	if err != nil {
 		return out
 	}
@@ -1077,7 +1024,7 @@ func tlsProbe(ctx context.Context, origin string, ip net.IP, port int, sni strin
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	start := time.Now()
-	conn, err := (&net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: net.ParseIP(origin), Port: 0}}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
 	if err != nil {
 		out.Error = err.Error()
 		return out
@@ -1115,7 +1062,7 @@ func probeCurve(ctx context.Context, origin string, ip net.IP, port int, sni str
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	conn, err := (&net.Dialer{Timeout: timeout, LocalAddr: &net.TCPAddr{IP: net.ParseIP(origin), Port: 0}}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
 	if err != nil {
 		return false
 	}
