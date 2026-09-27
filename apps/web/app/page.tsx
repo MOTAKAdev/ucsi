@@ -314,16 +314,17 @@ async function measureClientDelay(
 
 function isReadyResult(result: Result) {
   return (
-    result.status === 'READY' &&
-    result.tls13 &&
-    result.http2 &&
+    (result.status === 'READY' || result.status == null) &&
+    result.tls13 === true &&
+    result.http2 === true &&
     result.alpn === 'h2' &&
-    result.sni_accepted &&
-    result.certificate_valid &&
+    result.sni_accepted === true &&
+    result.certificate_valid === true &&
     result.x25519 === true &&
     result.post_quantum === true &&
     result.http3 === true &&
-    result.stability >= 1
+    result.http3_advertised === true &&
+    Number(result.stability) >= 1
   );
 }
 
@@ -895,6 +896,18 @@ export default function Home() {
 
     async function runClientMeasurements() {
       const pool = auto?.results ?? [];
+
+      const serverReady = pool.filter(isReadyResult);
+
+      // Show server-qualified candidates immediately. Client measurements
+      // refine the ranking, but a browser-side measurement failure must not
+      // turn a valid server result into "NO MATCH".
+      setFinalAutoResults(
+        serverReady.slice(0, 3).map((result, index) => ({
+          ...result,
+          rank: index + 1,
+        })),
+      );
 
       setClientRankingBusy(true);
       setScanStage('client');
@@ -1642,6 +1655,7 @@ export default function Home() {
         </section>
 
         {auto &&
+          scanStage === 'complete' &&
           !clientRankingBusy &&
           finalAutoResults.length === 0 && (
             <section className="results no-match">
@@ -1661,6 +1675,7 @@ export default function Home() {
           )}
 
         {auto &&
+          scanStage === 'complete' &&
           !clientRankingBusy &&
           finalAutoResults.length > 0 && (
             <section className="results results-reveal">
