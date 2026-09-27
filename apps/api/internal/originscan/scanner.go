@@ -31,7 +31,7 @@ const (
 	maxCandidates        = 1200
 	qualifiedKeep        = 15
 	deepCandidates = 72
-	tlsGateConcurrency   = 48
+	tlsGateConcurrency   = 16
 	deepConcurrency      = 18
 	tlsGateTO            = 1200 * time.Millisecond
 	deepTO               = 2500 * time.Millisecond
