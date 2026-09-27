@@ -899,6 +899,8 @@ export default function Home() {
     async function runClientMeasurements() {
       const pool = auto?.results ?? [];
 
+      try {
+
       const serverReady = pool;
 
       // Show server-qualified candidates immediately. Client measurements
@@ -1008,6 +1010,20 @@ export default function Home() {
       setFinalAutoResults(ranked);
       setClientRankingBusy(false);
       setScanStage('complete');
+      } catch {
+        // Server-qualified results remain the source of truth if any
+        // browser-side measurement fails unexpectedly.
+        if (!cancelled) {
+          setFinalAutoResults(
+            pool.slice(0, 3).map((result, index) => ({
+              ...result,
+              rank: index + 1,
+            })),
+          );
+          setClientRankingBusy(false);
+          setScanStage("complete");
+        }
+      }
     }
 
     runClientMeasurements();
@@ -1685,7 +1701,7 @@ export default function Home() {
           scanStage !== 'server' &&
           !clientRankingBusy &&
           scanStage === 'complete' &&
-          finalAutoResults.length === 0 && (
+          (!auto.results?.length || (auto.qualified_count ?? auto.results.length) === 0) && (
             <section className="results no-match">
               <div className="results-head">
                 <div>
@@ -1705,7 +1721,7 @@ export default function Home() {
         {auto &&
           scanStage !== 'idle' &&
           scanStage !== 'server' &&
-          finalAutoResults.length > 0 && (
+          auto.results?.length > 0 && (
             <section className="results results-reveal">
               <div className="results-head">
                 <div>
@@ -1734,7 +1750,13 @@ export default function Home() {
               </div>
 
               <div className="result-list">
-                {finalAutoResults.map(
+                {(finalAutoResults.length
+                  ? finalAutoResults
+                  : auto.results.slice(0, 3).map((result, index) => ({
+                      ...result,
+                      rank: index + 1,
+                    }))
+                ).map(
                   (result) => (
                     <div
                       key={`${result.rank}-${result.sni}`}
