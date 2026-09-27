@@ -175,14 +175,21 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 	}
 
 	candidates := loadCandidates(ctx, candidateFile)
+	priorityCandidates := make([]string, 0, 12)
 
 	// Add reverse-DNS and default-certificate names before ranking feeds. These
 	// target-specific names are much more valuable for arbitrary server IPs.
 	if ptrs, err := net.DefaultResolver.LookupAddr(ctx, origin); err == nil && len(ptrs) > 0 {
+		priorityCandidates = append(priorityCandidates, ptrs...)
 		candidates = uniqueCandidates(append(ptrs, candidates...))
 	}
 	if bootstrap := bootstrapCertificateCandidates(ctx, origin, tlsGateTO); len(bootstrap) > 0 {
+		priorityCandidates = append(priorityCandidates, bootstrap...)
 		candidates = uniqueCandidates(append(bootstrap, candidates...))
+	}
+	priorityCandidates = uniqueCandidates(priorityCandidates)
+	if len(priorityCandidates) > 12 {
+		priorityCandidates = priorityCandidates[:12]
 	}
 
 	if len(candidates) == 0 {
@@ -254,6 +261,29 @@ func AutoScan(ctx context.Context, originIP string, samples, topN int, candidate
 	for i := range phase2 {
 		if phase2OK[i] {
 			qualified = append(qualified, phase2[i])
+		}
+	}
+
+	// Target-specific names get a dedicated deep pass so transient failures
+	// in the broad discovery fan-out cannot hide the real names associated with
+	// this exact destination IP.
+	seenQualified := make(map[string]struct{}, len(qualified))
+	for _, r := range qualified {
+		seenQualified[r.SNI] = struct{}{}
+	}
+	for _, candidate := range priorityCandidates {
+		if _, seen := seenQualified[candidate]; seen {
+			continue
+		}
+		res := scanQualified(ctx, origin, CandidateResult{
+			SNI:    candidate,
+			Target: fmt.Sprintf("%s:443", origin),
+			IP:     origin,
+			Status: "NOT_READY",
+		}, candidate, samples, deepTO)
+		if mandatoryReady(res) && res.Stability >= 1 {
+			qualified = append(qualified, res)
+			seenQualified[candidate] = struct{}{}
 		}
 	}
 
